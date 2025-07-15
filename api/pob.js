@@ -10,21 +10,28 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: "Invalid or empty URL provided." });
         }
 
-        // The POB code is the last part of the URL path
-        const urlParts = new URL(url.trim());
-        const pathParts = urlParts.pathname.split('/');
-        const pobCode = pathParts[pathParts.length - 1];
+        let pobCodeUrl;
+        const trimmedUrl = url.trim();
 
-        if (!pobCode) {
-             throw new Error("Could not extract POB code from URL.");
+        if (trimmedUrl.includes('pobb.in')) {
+            const urlParts = new URL(trimmedUrl);
+            const pathParts = urlParts.pathname.split('/');
+            const pobCode = pathParts[pathParts.length - 1];
+            if (!pobCode) throw new Error("Could not extract POB code from pobb.in URL.");
+            pobCodeUrl = `https://pobb.in/raw/${pobCode}`;
+        } else if (trimmedUrl.includes('pastebin.com')) {
+            const urlParts = new URL(trimmedUrl);
+            const pathParts = urlParts.pathname.split('/');
+            const pobCode = pathParts[pathParts.length - 1];
+            if (!pobCode) throw new Error("Could not extract POB code from pastebin.com URL.");
+            pobCodeUrl = `https://pastebin.com/raw/${pobCode}`;
+        } else {
+            throw new Error("Unsupported URL. Please use a pobb.in or pastebin.com link.");
         }
-
-        // We need to fetch the raw code from pobb.in
-        const pobCodeUrl = `https://pobb.in/raw/${pobCode}`;
         
         const response = await fetch(pobCodeUrl);
         if (!response.ok) {
-            throw new Error(`Failed to fetch POB code from pobb.in (status: ${response.status})`);
+            throw new Error(`Failed to fetch POB code (status: ${response.status})`);
         }
         
         const rawCode = await response.text();
@@ -104,7 +111,6 @@ export default async function handler(req, res) {
         if (itemsElement) {
             for (const item of itemsElement.getElementsByTagName('Item')) {
                  const itemText = item.textContent || "";
-                 // Simple regex to find the item name from the raw text
                  const nameMatch = itemText.match(/Rarity: .*\n(.*?)\n/);
                  items.push({ 
                     name: nameMatch ? nameMatch[1] : 'Unknown Item',
