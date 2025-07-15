@@ -1,38 +1,42 @@
 // --- DOM Elements ---
 const pobUrlInput = document.getElementById('pob-url');
+const importButton = document.getElementById('import-button');
+const importStatus = document.getElementById('import-status');
+const analysisSection = document.getElementById('analysis-section');
+
 const userQuestionInput = document.getElementById('user-question');
 const analyzeButton = document.getElementById('analyze-button');
 const buttonText = document.getElementById('button-text');
 const buttonSpinner = document.getElementById('button-spinner');
+
 const resultContainer = document.getElementById('result-container');
 const placeholder = document.getElementById('placeholder');
 const resultOutput = document.getElementById('result-output');
+
 const skillSelectionContainer = document.getElementById('skill-selection-container');
 const primarySkillSelect = document.getElementById('primary-skill-select');
 const secondarySkillSelect = document.getElementById('secondary-skill-select');
 
-// Store fetched build data globally to avoid re-fetching
+// Store fetched build data globally
 let currentBuildData = null;
 
 // --- Event Listeners ---
+importButton.addEventListener('click', handleImport);
 analyzeButton.addEventListener('click', handleAnalysis);
-pobUrlInput.addEventListener('change', handlePobUrlChange);
-
 
 /**
- * Handles fetching and parsing the POB URL.
+ * Step 1: Handles fetching and parsing the POB URL.
  */
-async function handlePobUrlChange() {
+async function handleImport() {
     const pobUrl = pobUrlInput.value.trim();
     if (!pobUrl) {
-        skillSelectionContainer.classList.add('hidden');
+        alert("Please enter a POB URL.");
         return;
     }
 
-    setLoadingState(true, 'Parsing...');
-    skillSelectionContainer.classList.remove('hidden');
-    primarySkillSelect.innerHTML = '<option>Parsing POB...</option>';
-    secondarySkillSelect.innerHTML = '<option>Parsing POB...</option>';
+    setImportLoadingState(true);
+    analysisSection.classList.add('hidden');
+    currentBuildData = null;
     
     try {
         const response = await fetch(`/api/pob?url=${encodeURIComponent(pobUrl)}`);
@@ -46,20 +50,24 @@ async function handlePobUrlChange() {
         
         if (currentBuildData && currentBuildData.skills) {
             populateSkillSelectors(currentBuildData.skills);
+            analysisSection.classList.remove('hidden');
+            importStatus.textContent = "Build imported successfully!";
+            importStatus.classList.remove('text-red-400');
+            importStatus.classList.add('text-green-400');
         } else {
             throw new Error("Could not find skill data in the response.");
         }
 
     } catch (error) {
         console.error("Error fetching POB data:", error);
-        primarySkillSelect.innerHTML = `<option>Error parsing POB</option>`;
-        secondarySkillSelect.innerHTML = `<option>Please try again</option>`;
-        currentBuildData = null; // Clear data on error
+        importStatus.textContent = `Error: ${error.message}`;
+        importStatus.classList.add('text-red-400');
+        importStatus.classList.remove('text-green-400');
+        currentBuildData = null;
     } finally {
-        setLoadingState(false);
+        setImportLoadingState(false);
     }
 }
-
 
 /**
  * Populates the skill selection dropdowns from the parsed build data.
@@ -90,7 +98,7 @@ function populateSkillSelectors(skills) {
 }
 
 /**
- * Main function to handle the final analysis.
+ * Step 2: Handles the final analysis using the stored build data.
  */
 async function handleAnalysis() {
     const userQuestion = userQuestionInput.value.trim();
@@ -98,7 +106,7 @@ async function handleAnalysis() {
     const secondarySkill = secondarySkillSelect.value;
 
     if (!currentBuildData) {
-        alert("Please enter a valid POB URL first.");
+        alert("Please import a build first.");
         return;
     }
      if (!userQuestion) {
@@ -106,7 +114,9 @@ async function handleAnalysis() {
         return;
     }
     
-    setLoadingState(true, 'Analyzing...');
+    setAnalyzeLoadingState(true);
+    resultOutput.innerHTML = '';
+    placeholder.style.display = 'none';
 
     try {
         const response = await fetch('/api/gemini', {
@@ -132,28 +142,21 @@ async function handleAnalysis() {
         console.error("Analysis Error:", error);
         resultOutput.innerHTML = `<p class="text-red-400"><strong>Error:</strong> ${error.message}</p>`;
     } finally {
-        setLoadingState(false);
+        setAnalyzeLoadingState(false);
     }
 }
 
-/**
- * Toggles the UI loading state.
- */
-function setLoadingState(isLoading, text = 'Analyzing...') {
+function setImportLoadingState(isLoading) {
+    importButton.disabled = isLoading;
+    importButton.textContent = isLoading ? 'Importing...' : 'Import';
+}
+
+function setAnalyzeLoadingState(isLoading) {
     analyzeButton.disabled = isLoading;
-    if (isLoading) {
-        buttonText.classList.add('hidden');
-        buttonSpinner.classList.remove('hidden');
-        buttonSpinner.innerHTML = `<svg class="animate-spin -ml-1 mr-3 h-5 w-5 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ${text}`;
-    } else {
-        buttonText.classList.remove('hidden');
-        buttonSpinner.classList.add('hidden');
-    }
+    buttonText.style.display = isLoading ? 'none' : 'inline';
+    buttonSpinner.style.display = isLoading ? 'inline' : 'none';
 }
 
-/**
- * Basic formatter to convert markdown-like text to simple HTML.
- */
 function formatResponse(text) {
     let html = text
         .replace(/^### (.*$)/gim, '<h3>$1</h3>')
