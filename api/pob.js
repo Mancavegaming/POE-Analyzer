@@ -1,7 +1,8 @@
 import pako from 'pako';
 import { ZstdCodec } from 'zstd-codec';
 
-// This serverless function fetches and parses a POB link.
+// This is the definitive, self-contained POB parser.
+// It runs on the server and handles both old (zlib) and new (zstd) formats.
 export default async function handler(req, res) {
     try {
         const { url } = req.query;
@@ -9,20 +10,32 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: "Invalid or empty URL provided." });
         }
 
-        const pobCodeUrl = url.trim().replace('pobb.in', 'pobb.in/raw').replace('pastebin.com/', 'pastebin.com/raw/');
+        // The POB code is the last part of the URL path
+        const urlParts = new URL(url.trim());
+        const pathParts = urlParts.pathname.split('/');
+        const pobCode = pathParts[pathParts.length - 1];
+
+        if (!pobCode) {
+             throw new Error("Could not extract POB code from URL.");
+        }
+
+        // We need to fetch the raw code from pobb.in
+        const pobCodeUrl = `https://pobb.in/raw/${pobCode}`;
         
         const response = await fetch(pobCodeUrl);
         if (!response.ok) {
-            throw new Error(`Fetch failed (status: ${response.status})`);
+            throw new Error(`Failed to fetch POB code from pobb.in (status: ${response.status})`);
         }
         
-        const pobCode = await response.text();
-        if (!pobCode) {
+        const rawCode = await response.text();
+        if (!rawCode) {
             throw new Error("Could not retrieve POB code from URL.");
         }
 
-        const base64String = pobCode.trim().replace(/-/g, '+').replace(/_/g, '/');
+        // POB uses URL-safe Base64, so replace '-' with '+' and '_' with '/'
+        const base64String = rawCode.trim().replace(/-/g, '+').replace(/_/g, '/');
         
+        // Convert base64 to a byte array
         const binaryString = atob(base64String);
         const len = binaryString.length;
         const bytes = new Uint8Array(len);
@@ -32,15 +45,21 @@ export default async function handler(req, res) {
 
         let inflatedData;
         try {
+            // Try decompressing with Zlib first (older POBs)
             inflatedData = pako.inflate(bytes, { to: 'string' });
         } catch (e) {
+            // If Zlib fails, try decompressing with ZSTD (newer POBs)
             if (String(e).includes("incorrect header check") || String(e).includes("invalid block type")) {
-                const zstd = await ZstdCodec.load();
-                const streaming = new zstd.Streaming();
-                const decompressed = streaming.decompress(bytes);
-                inflatedData = new TextDecoder().decode(decompressed);
+                try {
+                    const zstd = await ZstdCodec.load();
+                    const streaming = new zstd.Streaming();
+                    const decompressed = streaming.decompress(bytes);
+                    inflatedData = new TextDecoder().decode(decompressed);
+                } catch (zstdError) {
+                    throw new Error("Failed to decompress POB data with both Zlib and ZSTD.");
+                }
             } else {
-                 throw e;
+                 throw e; // Re-throw other unexpected errors
             }
         }
 
@@ -84,7 +103,13 @@ export default async function handler(req, res) {
         const items = [];
         if (itemsElement) {
             for (const item of itemsElement.getElementsByTagName('Item')) {
-                items.push({ data: item.textContent.trim() });
+                 const itemText = item.textContent || "";
+                 // Simple regex to find the item name from the raw text
+                 const nameMatch = itemText.match(/Rarity: .*\n(.*?)\n/);
+                 items.push({ 
+                    name: nameMatch ? nameMatch[1] : 'Unknown Item',
+                    data: itemText.trim() 
+                });
             }
         }
 
