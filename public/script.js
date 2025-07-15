@@ -12,56 +12,8 @@ const skillSelectionContainer = document.getElementById('skill-selection-contain
 const primarySkillSelect = document.getElementById('primary-skill-select');
 const secondarySkillSelect = document.getElementById('secondary-skill-select');
 
-// Store fetched build data globally to avoid re-fetching
-let currentBuildData = null;
-
 // --- Event Listeners ---
 analyzeButton.addEventListener('click', handleAnalysis);
-// Add listeners to fetch data when user types in both fields
-accountNameInput.addEventListener('change', fetchAndPopulateSkills);
-characterNameInput.addEventListener('change', fetchAndPopulateSkills);
-
-
-/**
- * Fetches character data and populates skill dropdowns.
- */
-async function fetchAndPopulateSkills() {
-    const accountName = accountNameInput.value.trim();
-    const characterName = characterNameInput.value.trim();
-
-    // Only fetch if both fields have values
-    if (!accountName || !characterName) {
-        skillSelectionContainer.classList.add('hidden');
-        return;
-    }
-
-    skillSelectionContainer.classList.remove('hidden');
-    primarySkillSelect.innerHTML = '<option>Fetching skills...</option>';
-    secondarySkillSelect.innerHTML = '<option>Fetching skills...</option>';
-    
-    try {
-        const response = await fetch(`/api/analyze?accountName=${encodeURIComponent(accountName)}&characterName=${encodeURIComponent(characterName)}`);
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Request failed with status ${response.status}`);
-        }
-        
-        currentBuildData = await response.json();
-        
-        if (currentBuildData && currentBuildData.items) {
-            populateSkillSelectors(currentBuildData.items);
-        } else {
-            throw new Error("Could not find item data in the response.");
-        }
-
-    } catch (error) {
-        console.error("Error fetching character data:", error);
-        primarySkillSelect.innerHTML = `<option>Error fetching data</option>`;
-        secondarySkillSelect.innerHTML = `<option>Please try again</option>`;
-    }
-}
-
 
 /**
  * Populates the skill selection dropdowns from the fetched item data.
@@ -101,11 +53,11 @@ function populateSkillSelectors(items) {
  * Main function to handle the final analysis.
  */
 async function handleAnalysis() {
+    const accountName = accountNameInput.value.trim();
+    const characterName = characterNameInput.value.trim();
     const userQuestion = userQuestionInput.value.trim();
-    const primarySkill = primarySkillSelect.value;
-    const secondarySkill = secondarySkillSelect.value;
 
-    if (!currentBuildData) {
+    if (!accountName || !characterName) {
         alert("Please enter an Account and Character name first.");
         return;
     }
@@ -117,34 +69,58 @@ async function handleAnalysis() {
     setLoadingState(true);
     resultOutput.innerHTML = '';
     placeholder.classList.add('hidden');
+    skillSelectionContainer.classList.remove('hidden');
+    primarySkillSelect.innerHTML = '<option>Fetching skills...</option>';
+    secondarySkillSelect.innerHTML = '<option>Fetching skills...</option>';
 
     try {
-        // We no longer need to fetch here, as the data is already in currentBuildData
-        // We just need to call the Gemini part of our API
-        const response = await fetch('/api/analyze', {
+        // Step 1: Fetch the character data directly when the button is clicked.
+        const response = await fetch(`/api/analyze?accountName=${encodeURIComponent(accountName)}&characterName=${encodeURIComponent(characterName)}`);
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Request failed with status ${response.status}`);
+        }
+        
+        const buildData = await response.json();
+        
+        if (buildData && buildData.items) {
+            // Step 2: Populate the skill selectors with the fresh data.
+            populateSkillSelectors(buildData.items);
+        } else {
+            throw new Error("Could not find item data in the response.");
+        }
+
+        // Now that skills are populated, get the selected values.
+        const primarySkill = primarySkillSelect.value;
+        const secondarySkill = secondarySkillSelect.value;
+
+        // Step 3: Call the Gemini API with all the necessary data.
+        const analysisResponse = await fetch('/api/analyze', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ 
-                buildData: currentBuildData, 
+                buildData: buildData, 
                 userQuestion,
                 primarySkill,
                 secondarySkill
             }),
         });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Request failed with status ${response.status}`);
+        if (!analysisResponse.ok) {
+            const errorData = await analysisResponse.json();
+            throw new Error(errorData.error || `Request failed with status ${analysisResponse.status}`);
         }
 
-        const analysisResult = await response.json();
+        const analysisResult = await analysisResponse.json();
         resultOutput.innerHTML = formatResponse(analysisResult.text);
 
     } catch (error) {
         console.error("Analysis Error:", error);
         resultOutput.innerHTML = `<p class="text-red-400"><strong>Error:</strong> ${error.message}</p>`;
+        skillSelectionContainer.classList.add('hidden'); // Hide dropdowns on error
     } finally {
         setLoadingState(false);
     }
