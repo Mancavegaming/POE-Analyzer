@@ -13,6 +13,7 @@ export default async function handler(req, res) {
         let pobCodeUrl;
         const trimmedUrl = url.trim();
 
+        // **DEFINITIVE FIX**: Handle both pobb.in and pastebin.com links correctly.
         if (trimmedUrl.includes('pobb.in')) {
             const urlParts = new URL(trimmedUrl);
             const pathParts = urlParts.pathname.split('/');
