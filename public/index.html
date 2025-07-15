@@ -35,9 +35,25 @@
                 </div>
             </div>
 
+            <!-- Skill Selection Dropdowns -->
+            <div id="skill-selection-container" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="primary-skill-select" class="block text-sm font-medium text-gray-300 mb-2">Primary Damage Skill</label>
+                    <select id="primary-skill-select" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition">
+                        <option>Fetching skills...</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="secondary-skill-select" class="block text-sm font-medium text-gray-300 mb-2">Secondary Skill (Optional)</label>
+                    <select id="secondary-skill-select" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition">
+                         <option>Fetching skills...</option>
+                    </select>
+                </div>
+            </div>
+
             <div>
                 <label for="user-question" class="block text-sm font-medium text-gray-300 mb-2">Your Question</label>
-                <textarea id="user-question" rows="4" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition" placeholder="e.g., How can I improve this build's defenses? What are some good unique items for this character?"></textarea>
+                <textarea id="user-question" rows="4" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition" placeholder="e.g., How can I improve this build's defenses? What is the DPS of my primary skill?"></textarea>
             </div>
 
             <div>
