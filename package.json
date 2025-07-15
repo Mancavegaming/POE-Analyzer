@@ -2,6 +2,7 @@
   "name": "poe-build-analyzer",
   "version": "1.0.0",
   "description": "PoE Build Analyzer using Gemini AI",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
