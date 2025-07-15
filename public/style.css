@@ -1,0 +1,16 @@
+body {
+    font-family: 'Inter', sans-serif;
+}
+.prose-styles h1, .prose-styles h2, .prose-styles h3 {
+    color: white;
+}
+.prose-styles p, .prose-styles li {
+    color: #d1d5db; /* gray-300 */
+}
+.prose-styles strong {
+    color: #f3f4f6; /* gray-100 */
+}
+.prose-styles ul {
+    list-style-type: disc;
+    padding-left: 1.5rem;
+}
