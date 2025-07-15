@@ -1,6 +1,5 @@
 // --- DOM Elements ---
-const accountNameInput = document.getElementById('account-name');
-const characterNameInput = document.getElementById('character-name');
+const pobUrlInput = document.getElementById('pob-url');
 const userQuestionInput = document.getElementById('user-question');
 const analyzeButton = document.getElementById('analyze-button');
 const buttonText = document.getElementById('button-text');
@@ -12,53 +11,94 @@ const skillSelectionContainer = document.getElementById('skill-selection-contain
 const primarySkillSelect = document.getElementById('primary-skill-select');
 const secondarySkillSelect = document.getElementById('secondary-skill-select');
 
+// Store fetched build data globally to avoid re-fetching
+let currentBuildData = null;
+
 // --- Event Listeners ---
 analyzeButton.addEventListener('click', handleAnalysis);
+pobUrlInput.addEventListener('change', handlePobUrlChange);
+
 
 /**
- * Populates the skill selection dropdowns from the fetched item data.
+ * Handles fetching and parsing the POB URL.
  */
-function populateSkillSelectors(items) {
+async function handlePobUrlChange() {
+    const pobUrl = pobUrlInput.value.trim();
+    if (!pobUrl) {
+        skillSelectionContainer.classList.add('hidden');
+        return;
+    }
+
+    setLoadingState(true, 'Parsing...');
+    skillSelectionContainer.classList.remove('hidden');
+    primarySkillSelect.innerHTML = '<option>Parsing POB...</option>';
+    secondarySkillSelect.innerHTML = '<option>Parsing POB...</option>';
+    
+    try {
+        const response = await fetch(`/api/pob?url=${encodeURIComponent(pobUrl)}`);
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Request failed with status ${response.status}`);
+        }
+        
+        currentBuildData = await response.json();
+        
+        if (currentBuildData && currentBuildData.skills) {
+            populateSkillSelectors(currentBuildData.skills);
+        } else {
+            throw new Error("Could not find skill data in the response.");
+        }
+
+    } catch (error) {
+        console.error("Error fetching POB data:", error);
+        primarySkillSelect.innerHTML = `<option>Error parsing POB</option>`;
+        secondarySkillSelect.innerHTML = `<option>Please try again</option>`;
+        currentBuildData = null; // Clear data on error
+    } finally {
+        setLoadingState(false);
+    }
+}
+
+
+/**
+ * Populates the skill selection dropdowns from the parsed build data.
+ */
+function populateSkillSelectors(skills) {
     primarySkillSelect.innerHTML = '';
     secondarySkillSelect.innerHTML = '';
-    secondarySkillSelect.add(new Option("None (Optional)", "None")); // Add a "None" option
+    secondarySkillSelect.add(new Option("None (Optional)", "None"));
 
-    const allGems = [];
-    items.forEach(item => {
-        if (item.gems) {
-            item.gems.forEach(gem => {
-                // We only care about active skills, not supports
-                if (!gem.name.includes('Support')) {
-                    allGems.push(gem);
-                }
-            });
-        }
-    });
+    const activeSkills = skills.filter(skill => skill.isEnabled && !skill.mainSkillId.includes('Support'));
 
-    if (allGems.length === 0) {
+    if (activeSkills.length === 0) {
         primarySkillSelect.innerHTML = '<option>No active skills found</option>';
         secondarySkillSelect.innerHTML = '<option>None</option>';
         return;
     }
 
-    allGems.forEach(gem => {
-        const optionText = `${gem.name} (Lvl ${gem.level})`;
-        primarySkillSelect.add(new Option(optionText, gem.name));
-        secondarySkillSelect.add(new Option(optionText, gem.name));
+    activeSkills.forEach(skill => {
+        const optionText = `${skill.mainSkillId} (Lvl ${skill.level} in ${skill.slot})`;
+        primarySkillSelect.add(new Option(optionText, skill.mainSkillId));
+        secondarySkillSelect.add(new Option(optionText, skill.mainSkillId));
     });
-}
 
+    const mainSkillGuess = activeSkills.find(s => s.slot === "Body Armour" || s.slot === "Weapon 1");
+    if (mainSkillGuess) {
+        primarySkillSelect.value = mainSkillGuess.mainSkillId;
+    }
+}
 
 /**
  * Main function to handle the final analysis.
  */
 async function handleAnalysis() {
-    const accountName = accountNameInput.value.trim();
-    const characterName = characterNameInput.value.trim();
     const userQuestion = userQuestionInput.value.trim();
+    const primarySkill = primarySkillSelect.value;
+    const secondarySkill = secondarySkillSelect.value;
 
-    if (!accountName || !characterName) {
-        alert("Please enter an Account and Character name first.");
+    if (!currentBuildData) {
+        alert("Please enter a valid POB URL first.");
         return;
     }
      if (!userQuestion) {
@@ -66,61 +106,31 @@ async function handleAnalysis() {
         return;
     }
     
-    setLoadingState(true);
-    resultOutput.innerHTML = '';
-    placeholder.classList.add('hidden');
-    skillSelectionContainer.classList.remove('hidden');
-    primarySkillSelect.innerHTML = '<option>Fetching skills...</option>';
-    secondarySkillSelect.innerHTML = '<option>Fetching skills...</option>';
+    setLoadingState(true, 'Analyzing...');
 
     try {
-        // Step 1: Fetch the character data directly when the button is clicked.
-        const response = await fetch(`/api/analyze?accountName=${encodeURIComponent(accountName)}&characterName=${encodeURIComponent(characterName)}`);
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Request failed with status ${response.status}`);
-        }
-        
-        const buildData = await response.json();
-        
-        if (buildData && buildData.items) {
-            // Step 2: Populate the skill selectors with the fresh data.
-            populateSkillSelectors(buildData.items);
-        } else {
-            throw new Error("Could not find item data in the response.");
-        }
-
-        // Now that skills are populated, get the selected values.
-        const primarySkill = primarySkillSelect.value;
-        const secondarySkill = secondarySkillSelect.value;
-
-        // Step 3: Call the Gemini API with all the necessary data.
-        const analysisResponse = await fetch('/api/analyze', {
+        const response = await fetch('/api/gemini', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                buildData: buildData, 
+                buildData: currentBuildData, 
                 userQuestion,
                 primarySkill,
                 secondarySkill
             }),
         });
 
-        if (!analysisResponse.ok) {
-            const errorData = await analysisResponse.json();
-            throw new Error(errorData.error || `Request failed with status ${analysisResponse.status}`);
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Request failed with status ${response.status}`);
         }
 
-        const analysisResult = await analysisResponse.json();
+        const analysisResult = await response.json();
         resultOutput.innerHTML = formatResponse(analysisResult.text);
 
     } catch (error) {
         console.error("Analysis Error:", error);
         resultOutput.innerHTML = `<p class="text-red-400"><strong>Error:</strong> ${error.message}</p>`;
-        skillSelectionContainer.classList.add('hidden'); // Hide dropdowns on error
     } finally {
         setLoadingState(false);
     }
@@ -129,11 +139,12 @@ async function handleAnalysis() {
 /**
  * Toggles the UI loading state.
  */
-function setLoadingState(isLoading) {
+function setLoadingState(isLoading, text = 'Analyzing...') {
     analyzeButton.disabled = isLoading;
     if (isLoading) {
         buttonText.classList.add('hidden');
         buttonSpinner.classList.remove('hidden');
+        buttonSpinner.innerHTML = `<svg class="animate-spin -ml-1 mr-3 h-5 w-5 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ${text}`;
     } else {
         buttonText.classList.remove('hidden');
         buttonSpinner.classList.add('hidden');
