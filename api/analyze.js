@@ -6,10 +6,15 @@ async function fetchCharacterData(accountName, characterName) {
     const itemsApiUrl = `https://www.pathofexile.com/character-window/get-items?accountName=${encodeURIComponent(accountName)}&character=${encodeURIComponent(characterName)}`;
     const passivesApiUrl = `https://www.pathofexile.com/character-window/get-passive-skills?accountName=${encodeURIComponent(accountName)}&character=${encodeURIComponent(characterName)}`;
 
+    // Add a User-Agent header to mimic a real browser request.
+    const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
+    };
+
     // Fetch both endpoints at the same time
     const [itemsResponse, passivesResponse] = await Promise.all([
-        fetch(itemsApiUrl),
-        fetch(passivesApiUrl)
+        fetch(itemsApiUrl, { headers }),
+        fetch(passivesApiUrl, { headers })
     ]);
 
     if (!itemsResponse.ok) {
