@@ -1,41 +1,162 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- DOM Elements ---
-    const pobCodeInput = document.getElementById('pob-code');
+    const accountNameInput = document.getElementById('account-name');
+    const characterNameInput = document.getElementById('character-name');
+    const importButton = document.getElementById('import-button');
+    const importButtonText = document.getElementById('import-button-text');
+    const importButtonSpinner = document.getElementById('import-button-spinner');
+    const importStatus = document.getElementById('import-status');
+
+    const analysisSection = document.getElementById('analysis-section');
     const userQuestionInput = document.getElementById('user-question');
     const analyzeButton = document.getElementById('analyze-button');
     const buttonText = document.getElementById('button-text');
     const buttonSpinner = document.getElementById('button-spinner');
+
     const resultContainer = document.getElementById('result-container');
     const placeholder = document.getElementById('placeholder');
     const resultOutput = document.getElementById('result-output');
-    const treeLinkContainer = document.getElementById('tree-link-container');
-    const treeLink = document.getElementById('tree-link');
+
+    const skillSelectionContainer = document.getElementById('skill-selection-container');
+    const primarySkillSelect = document.getElementById('primary-skill-select');
+    const secondarySkillSelect = document.getElementById('secondary-skill-select');
+
+    // Store fetched build data globally
+    let currentBuildData = null;
 
     // --- Event Listeners ---
+    importButton.addEventListener('click', handleImport);
     analyzeButton.addEventListener('click', handleAnalysis);
 
     /**
-     * Main function to handle the analysis.
+     * Step 1: Handles fetching character data from our serverless function.
+     */
+    async function handleImport() {
+        let accountName = accountNameInput.value.trim();
+        const characterName = characterNameInput.value.trim();
+
+        if (!accountName || !characterName) {
+            alert("Please provide both an Account Name and a Character Name.");
+            return;
+        }
+
+        // Automatically strip the tag from the account name if present.
+        if (accountName.includes('#')) {
+            accountName = accountName.split('#')[0];
+        }
+
+        setImportLoadingState(true);
+        analysisSection.classList.add('hidden');
+        resultOutput.innerHTML = '';
+        placeholder.style.display = 'block';
+        currentBuildData = null;
+
+        try {
+            const response = await fetch(`/api/analyze?accountName=${encodeURIComponent(accountName)}&characterName=${encodeURIComponent(characterName)}`);
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'The server returned an unreadable error.' }));
+                throw new Error(errorData.error || `Request failed with status ${response.status}`);
+            }
+
+            currentBuildData = await response.json();
+            
+            if (currentBuildData && currentBuildData.character) {
+                populateSkillSelectors(currentBuildData.items);
+                analysisSection.classList.remove('hidden');
+                importStatus.textContent = `Successfully imported '${currentBuildData.character.name}' (Level ${currentBuildData.character.level} ${currentBuildData.character.class}).`;
+                importStatus.classList.remove('text-red-400');
+                importStatus.classList.add('text-green-400');
+            } else {
+                throw new Error("Received invalid data from the server.");
+            }
+
+        } catch (error) {
+            console.error("Import Error:", error);
+            importStatus.textContent = `Error: ${error.message}`;
+            importStatus.classList.add('text-red-400');
+            importStatus.classList.remove('text-green-400');
+            currentBuildData = null;
+        } finally {
+            setImportLoadingState(false);
+        }
+    }
+
+    /**
+     * Populates the skill selection dropdowns from the character's items.
+     */
+    function populateSkillSelectors(items) {
+        if (!primarySkillSelect || !secondarySkillSelect) return; // Defensive check
+
+        primarySkillSelect.innerHTML = '';
+        secondarySkillSelect.innerHTML = '';
+        secondarySkillSelect.add(new Option("None (Optional)", "None"));
+
+        const allGems = [];
+        if (items) {
+            items.forEach(item => {
+                if (item.gems) {
+                    item.gems.forEach(gem => {
+                        if (!gem.name.includes('Support')) {
+                            allGems.push(gem);
+                        }
+                    });
+                }
+            });
+        }
+
+        if (allGems.length === 0) {
+            primarySkillSelect.innerHTML = '<option>No active skills found</option>';
+            secondarySkillSelect.innerHTML = '<option>None</option>';
+            return;
+        }
+
+        allGems.forEach(gem => {
+            const optionText = `${gem.name} (Lvl ${gem.level})`;
+            primarySkillSelect.add(new Option(optionText, gem.name));
+            secondarySkillSelect.add(new Option(optionText, gem.name));
+        });
+
+        const mainItem = items.find(item => item.inventoryId === "BodyArmour") || items.find(item => item.sockets?.length === 6);
+        if (mainItem && mainItem.gems) {
+            const mainSkill = mainItem.gems.find(gem => !gem.name.includes('Support'));
+            if (mainSkill) {
+                primarySkillSelect.value = mainSkill.name;
+            }
+        }
+    }
+
+    /**
+     * Step 2: Handles sending the imported data and question to Gemini for analysis.
      */
     async function handleAnalysis() {
-        const pobCode = pobCodeInput.value.trim();
         const userQuestion = userQuestionInput.value.trim();
+        const primarySkill = primarySkillSelect.value;
+        const secondarySkill = secondarySkillSelect.value;
 
-        if (!pobCode || !userQuestion) {
-            alert("Please provide both a POB Code and a question.");
+        if (!currentBuildData) {
+            alert("Please import a character first.");
+            return;
+        }
+        if (!userQuestion) {
+            alert("Please enter a question about the build.");
             return;
         }
         
-        setLoadingState(true);
+        setAnalyzeLoadingState(true);
         resultOutput.innerHTML = '';
         placeholder.style.display = 'none';
-        treeLinkContainer.classList.add('hidden');
 
         try {
             const response = await fetch('/api/analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pobCode, userQuestion }),
+                body: JSON.stringify({
+                    buildData: currentBuildData,
+                    userQuestion: userQuestion,
+                    primarySkill: primarySkill,
+                    secondarySkill: secondarySkill
+                }),
             });
 
             if (!response.ok) {
@@ -44,35 +165,28 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const analysisResult = await response.json();
-            
-            // Display the skill tree link if it exists
-            if (analysisResult.buildData && analysisResult.buildData.treeURL) {
-                treeLink.href = analysisResult.buildData.treeURL;
-                treeLinkContainer.classList.remove('hidden');
-            }
-            
             resultOutput.innerHTML = formatResponse(analysisResult.text);
 
         } catch (error) {
             console.error("Analysis Error:", error);
             resultOutput.innerHTML = `<p class="text-red-400"><strong>Error:</strong> ${error.message}</p>`;
         } finally {
-            setLoadingState(false);
+            setAnalyzeLoadingState(false);
         }
     }
 
-    /**
-     * Toggles the UI loading state.
-     */
-    function setLoadingState(isLoading) {
+    function setImportLoadingState(isLoading) {
+        importButton.disabled = isLoading;
+        importButtonText.style.display = isLoading ? 'none' : 'inline';
+        importButtonSpinner.style.display = isLoading ? 'inline' : 'none';
+    }
+
+    function setAnalyzeLoadingState(isLoading) {
         analyzeButton.disabled = isLoading;
         buttonText.style.display = isLoading ? 'none' : 'inline';
         buttonSpinner.style.display = isLoading ? 'inline' : 'none';
     }
 
-    /**
-     * Basic formatter to convert markdown-like text to simple HTML.
-     */
     function formatResponse(text) {
         let html = text
             .replace(/^### (.*$)/gim, '<h3>$1</h3>')
