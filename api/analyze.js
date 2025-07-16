@@ -86,7 +86,7 @@ export default async function handler(req, res) {
     // A POST request is for analyzing a build
     if (req.method === 'POST') {
         try {
-            const { buildData, userQuestion } = req.body;
+            const { buildData, userQuestion, primarySkill, secondarySkill } = req.body;
 
             const prompt = `
                 You are a world-class expert on the video game Path of Exile (PoE). 
@@ -97,6 +97,9 @@ export default async function handler(req, res) {
                 \`\`\`json
                 ${JSON.stringify(buildData, null, 2)}
                 \`\`\`
+
+                The user has identified their Primary Damage Skill as: "${primarySkill}".
+                ${secondarySkill && secondarySkill !== 'None' ? `They are also interested in a Secondary Skill: "${secondarySkill}".` : ''}
 
                 Here is the player's question:
                 "${userQuestion}"
