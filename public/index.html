@@ -16,41 +16,36 @@
         
         <div class="text-center mb-8">
             <h1 class="text-3xl md:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">PoE Build Analyzer</h1>
-            <p class="text-gray-400 mt-2">Import a build from a POB link, then ask Gemini AI anything about it.</p>
+            <p class="text-gray-400 mt-2">Import a build, then ask Gemini AI anything about it.</p>
         </div>
 
-        <!-- Step 1: Import POB -->
+        <!-- Step 1: Import Build -->
         <div class="space-y-4 p-4 border border-gray-700 rounded-lg">
-            <h2 class="text-xl font-semibold text-white">Step 1: Import Build</h2>
-            <div>
-                <label for="pob-url" class="block text-sm font-medium text-gray-300 mb-2">POB URL (pobb.in or pastebin.com)</label>
-                <div class="flex space-x-2">
-                    <input type="text" id="pob-url" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition" placeholder="e.g., https://pobb.in/FNSGYXu2QUgG">
-                    <button id="import-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-all duration-300 ease-in-out">Import</button>
+            <h2 class="text-xl font-semibold text-white">Step 1: Import Character</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="account-name" class="block text-sm font-medium text-gray-300 mb-2">Account Name</label>
+                    <input type="text" id="account-name" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition" placeholder="e.g., Zizaran (Case-Sensitive)">
+                </div>
+                <div>
+                    <label for="character-name" class="block text-sm font-medium text-gray-300 mb-2">Character Name</label>
+                    <input type="text" id="character-name" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition" placeholder="e.g., ZizPCOC (Case-Sensitive)">
                 </div>
             </div>
-             <div id="import-status" class="text-center text-gray-400 h-5"></div>
+            <button id="import-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-all duration-300 ease-in-out">
+                <span id="import-button-text">Import Build</span>
+                <span id="import-button-spinner" class="hidden">Importing...</span>
+            </button>
+            <div id="import-status" class="text-center text-gray-400 h-5 mt-2"></div>
         </div>
 
         <!-- Step 2: Analyze Build (Initially hidden) -->
         <div id="analysis-section" class="hidden mt-6 space-y-6">
             <div class="p-4 border border-gray-700 rounded-lg">
                  <h2 class="text-xl font-semibold text-white mb-4">Step 2: Analyze Build</h2>
-                <!-- Skill Selection Dropdowns -->
-                <div id="skill-selection-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label for="primary-skill-select" class="block text-sm font-medium text-gray-300 mb-2">Primary Damage Skill</label>
-                        <select id="primary-skill-select" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition"></select>
-                    </div>
-                    <div>
-                        <label for="secondary-skill-select" class="block text-sm font-medium text-gray-300 mb-2">Secondary Skill (Optional)</label>
-                        <select id="secondary-skill-select" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition"></select>
-                    </div>
-                </div>
-
-                <div class="mt-4">
+                <div>
                     <label for="user-question" class="block text-sm font-medium text-gray-300 mb-2">Your Question</label>
-                    <textarea id="user-question" rows="4" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition" placeholder="e.g., How can I improve this build's defenses? What is the DPS of my primary skill?"></textarea>
+                    <textarea id="user-question" rows="4" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition" placeholder="e.g., How can I improve this build's defenses?"></textarea>
                 </div>
 
                 <div class="mt-4">
