@@ -1,9 +1,12 @@
 // --- DOM Elements ---
-const pobUrlInput = document.getElementById('pob-url');
+const accountNameInput = document.getElementById('account-name');
+const characterNameInput = document.getElementById('character-name');
 const importButton = document.getElementById('import-button');
+const importButtonText = document.getElementById('import-button-text');
+const importButtonSpinner = document.getElementById('import-button-spinner');
 const importStatus = document.getElementById('import-status');
-const analysisSection = document.getElementById('analysis-section');
 
+const analysisSection = document.getElementById('analysis-section');
 const userQuestionInput = document.getElementById('user-question');
 const analyzeButton = document.getElementById('analyze-button');
 const buttonText = document.getElementById('button-text');
@@ -13,10 +16,6 @@ const resultContainer = document.getElementById('result-container');
 const placeholder = document.getElementById('placeholder');
 const resultOutput = document.getElementById('result-output');
 
-const skillSelectionContainer = document.getElementById('skill-selection-container');
-const primarySkillSelect = document.getElementById('primary-skill-select');
-const secondarySkillSelect = document.getElementById('secondary-skill-select');
-
 // Store fetched build data globally
 let currentBuildData = null;
 
@@ -25,41 +24,45 @@ importButton.addEventListener('click', handleImport);
 analyzeButton.addEventListener('click', handleAnalysis);
 
 /**
- * Step 1: Handles fetching and parsing the POB URL.
+ * Step 1: Handles fetching character data from our serverless function.
  */
 async function handleImport() {
-    const pobUrl = pobUrlInput.value.trim();
-    if (!pobUrl) {
-        alert("Please enter a POB URL.");
+    const accountName = accountNameInput.value.trim();
+    const characterName = characterNameInput.value.trim();
+
+    if (!accountName || !characterName) {
+        alert("Please provide both an Account Name and a Character Name.");
         return;
     }
 
     setImportLoadingState(true);
     analysisSection.classList.add('hidden');
+    resultOutput.innerHTML = '';
+    placeholder.style.display = 'block';
     currentBuildData = null;
-    
+
     try {
-        const response = await fetch(`/api/pob?url=${encodeURIComponent(pobUrl)}`);
-        
+        // This is a GET request to our serverless function
+        const response = await fetch(`/api/analyze?accountName=${encodeURIComponent(accountName)}&characterName=${encodeURIComponent(characterName)}`);
+
         if (!response.ok) {
-            const errorData = await response.json();
+            const errorData = await response.json().catch(() => ({ error: 'The server returned an unreadable error.' }));
             throw new Error(errorData.error || `Request failed with status ${response.status}`);
         }
-        
+
         currentBuildData = await response.json();
         
-        if (currentBuildData && currentBuildData.skills) {
-            populateSkillSelectors(currentBuildData.skills);
+        if (currentBuildData && currentBuildData.character) {
             analysisSection.classList.remove('hidden');
-            importStatus.textContent = "Build imported successfully!";
+            importStatus.textContent = `Successfully imported '${currentBuildData.character.name}' (Level ${currentBuildData.character.level} ${currentBuildData.character.class}).`;
             importStatus.classList.remove('text-red-400');
             importStatus.classList.add('text-green-400');
         } else {
-            throw new Error("Could not find skill data in the response.");
+            throw new Error("Received invalid data from the server.");
         }
 
     } catch (error) {
-        console.error("Error fetching POB data:", error);
+        console.error("Import Error:", error);
         importStatus.textContent = `Error: ${error.message}`;
         importStatus.classList.add('text-red-400');
         importStatus.classList.remove('text-green-400');
@@ -70,46 +73,16 @@ async function handleImport() {
 }
 
 /**
- * Populates the skill selection dropdowns from the parsed build data.
- */
-function populateSkillSelectors(skills) {
-    primarySkillSelect.innerHTML = '';
-    secondarySkillSelect.innerHTML = '';
-    secondarySkillSelect.add(new Option("None (Optional)", "None"));
-
-    const activeSkills = skills.filter(skill => skill.isEnabled && !skill.mainSkillId.includes('Support'));
-
-    if (activeSkills.length === 0) {
-        primarySkillSelect.innerHTML = '<option>No active skills found</option>';
-        secondarySkillSelect.innerHTML = '<option>None</option>';
-        return;
-    }
-
-    activeSkills.forEach(skill => {
-        const optionText = `${skill.mainSkillId} (Lvl ${skill.level} in ${skill.slot})`;
-        primarySkillSelect.add(new Option(optionText, skill.mainSkillId));
-        secondarySkillSelect.add(new Option(optionText, skill.mainSkillId));
-    });
-
-    const mainSkillGuess = activeSkills.find(s => s.slot === "Body Armour" || s.slot === "Weapon 1");
-    if (mainSkillGuess) {
-        primarySkillSelect.value = mainSkillGuess.mainSkillId;
-    }
-}
-
-/**
- * Step 2: Handles the final analysis using the stored build data.
+ * Step 2: Handles sending the imported data and question to Gemini for analysis.
  */
 async function handleAnalysis() {
     const userQuestion = userQuestionInput.value.trim();
-    const primarySkill = primarySkillSelect.value;
-    const secondarySkill = secondarySkillSelect.value;
 
     if (!currentBuildData) {
-        alert("Please import a build first.");
+        alert("Please import a character first.");
         return;
     }
-     if (!userQuestion) {
+    if (!userQuestion) {
         alert("Please enter a question about the build.");
         return;
     }
@@ -119,14 +92,13 @@ async function handleAnalysis() {
     placeholder.style.display = 'none';
 
     try {
-        const response = await fetch('/api/gemini', {
+        // This is a POST request to our serverless function
+        const response = await fetch('/api/analyze', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                buildData: currentBuildData, 
-                userQuestion,
-                primarySkill,
-                secondarySkill
+            body: JSON.stringify({
+                buildData: currentBuildData,
+                userQuestion: userQuestion
             }),
         });
 
@@ -148,7 +120,8 @@ async function handleAnalysis() {
 
 function setImportLoadingState(isLoading) {
     importButton.disabled = isLoading;
-    importButton.textContent = isLoading ? 'Importing...' : 'Import';
+    importButtonText.style.display = isLoading ? 'none' : 'inline';
+    importButtonSpinner.style.display = isLoading ? 'inline' : 'none';
 }
 
 function setAnalyzeLoadingState(isLoading) {
