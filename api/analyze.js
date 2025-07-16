@@ -6,17 +6,9 @@ async function fetchCharacterData(accountName, characterName) {
     const itemsApiUrl = `https://www.pathofexile.com/character-window/get-items?accountName=${encodeURIComponent(accountName)}&character=${encodeURIComponent(characterName)}`;
     const passivesApiUrl = `https://www.pathofexile.com/character-window/get-passive-skills?accountName=${encodeURIComponent(accountName)}&character=${encodeURIComponent(characterName)}`;
 
-    // **DEFINITIVE FIX**: Add the POESESSID to the request headers.
-    // This makes the request look like it's from a logged-in user, bypassing the 403 error.
-    const poeSessionId = process.env.POESESSID;
-    if (!poeSessionId) {
-        throw new Error("Configuration Error: Your POESESSID is not set on the Vercel server. Please go to your Project Settings -> Environment Variables in Vercel, add your POESESSID, and then redeploy.");
-    }
-
+    // Add a User-Agent header to mimic a real browser request.
     const headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
-        // The Cookie header is the key to authenticating our request
-        'Cookie': `POESESSID=${poeSessionId}`
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
     };
 
     // Fetch both endpoints at the same time
@@ -30,7 +22,7 @@ async function fetchCharacterData(accountName, characterName) {
             throw new Error("Character not found. Check spelling or make sure your profile is public.");
         }
         if (itemsResponse.status === 403) {
-            throw new Error("PoE API request was forbidden. Your POESESSID may be invalid, expired, or your profile is private.");
+             throw new Error("PoE API request was forbidden. Your character profile must be set to public in your PoE account's privacy settings.");
         }
         throw new Error(`PoE API request for items failed (status: ${itemsResponse.status})`);
     }
