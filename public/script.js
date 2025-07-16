@@ -86,16 +86,18 @@ function populateSkillSelectors(items) {
     secondarySkillSelect.add(new Option("None (Optional)", "None"));
 
     const allGems = [];
-    items.forEach(item => {
-        if (item.gems) {
-            item.gems.forEach(gem => {
-                // We only care about active skills, not supports
-                if (!gem.name.includes('Support')) {
-                    allGems.push(gem);
-                }
-            });
-        }
-    });
+    if (items) {
+        items.forEach(item => {
+            if (item.gems) {
+                item.gems.forEach(gem => {
+                    // We only care about active skills, not supports
+                    if (!gem.name.includes('Support')) {
+                        allGems.push(gem);
+                    }
+                });
+            }
+        });
+    }
 
     if (allGems.length === 0) {
         primarySkillSelect.innerHTML = '<option>No active skills found</option>';
@@ -110,7 +112,7 @@ function populateSkillSelectors(items) {
     });
 
     // A simple guess for the main skill (often in body armour or a 6-link)
-    const mainItem = items.find(item => item.inventoryId === "BodyArmour") || items.find(item => item.sockets.length === 6);
+    const mainItem = items.find(item => item.inventoryId === "BodyArmour") || items.find(item => item.sockets?.length === 6);
     if (mainItem && mainItem.gems) {
         const mainSkill = mainItem.gems.find(gem => !gem.name.includes('Support'));
         if (mainSkill) {
