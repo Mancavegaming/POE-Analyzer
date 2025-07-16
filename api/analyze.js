@@ -6,15 +6,17 @@ async function fetchCharacterData(accountName, characterName) {
     const itemsApiUrl = `https://www.pathofexile.com/character-window/get-items?accountName=${encodeURIComponent(accountName)}&character=${encodeURIComponent(characterName)}`;
     const passivesApiUrl = `https://www.pathofexile.com/character-window/get-passive-skills?accountName=${encodeURIComponent(accountName)}&character=${encodeURIComponent(characterName)}`;
 
-    // **DEFINITIVE FIX**: Add a User-Agent AND the POESESSID to the request headers.
     // This makes the request look like it's from a logged-in user, bypassing the 403 error.
     const poeSessionId = process.env.POESESSID;
     if (!poeSessionId) {
         throw new Error("POESESSID environment variable not set on the server. This is required to contact the PoE API.");
     }
 
+    // **DEFINITIVE FIX**: Add more standard browser headers to make the request look legitimate.
     const headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
         'Cookie': `POESESSID=${poeSessionId}`
     };
 
@@ -28,9 +30,8 @@ async function fetchCharacterData(accountName, characterName) {
         if (itemsResponse.status === 404) {
             throw new Error("Character not found. Check spelling or make sure your profile is public.");
         }
-        // A 403 error here now likely means the POESESSID is invalid or expired.
         if (itemsResponse.status === 403) {
-            throw new Error("PoE API request was forbidden. Your POESESSID may be invalid or expired.");
+            throw new Error("PoE API request was forbidden. Your POESESSID may be invalid or expired. Please get a fresh one from the PoE website.");
         }
         throw new Error(`PoE API request for items failed (status: ${itemsResponse.status})`);
     }
