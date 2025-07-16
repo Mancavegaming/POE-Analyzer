@@ -1,3 +1,4 @@
+// Version 2 - Forcing a fresh build to load environment variables.
 // This single serverless function handles both fetching data and calling Gemini.
 // It differentiates based on the request method (GET vs POST).
 
@@ -11,7 +12,7 @@ async function fetchCharacterData(accountName, characterName) {
     
     // This check confirms if the Vercel environment has the required secret key.
     if (!poeSessionId) {
-        throw new Error("Configuration Error: Your POESESSID is not set on the Vercel server. Please go to your Project Settings -> Environment Variables in Vercel, add your POESESSID, and then redeploy.");
+        throw new Error("CRITICAL CONFIGURATION ERROR: The POESESSID environment variable was not found on the Vercel server. Please double-check that it is set correctly in your Vercel Project Settings and trigger a new deployment.");
     }
 
     const headers = {
