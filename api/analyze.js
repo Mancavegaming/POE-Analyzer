@@ -21,6 +21,10 @@ async function fetchCharacterData(accountName, characterName) {
         if (itemsResponse.status === 404) {
             throw new Error("Character not found. Check spelling or make sure your profile is public.");
         }
+        // **DEFINITIVE FIX**: Provide a more helpful error message for the 403 status.
+        if (itemsResponse.status === 403) {
+            throw new Error("PoE API request was forbidden. Please ensure your character profile is set to public in your PoE account's privacy settings.");
+        }
         throw new Error(`PoE API request for items failed (status: ${itemsResponse.status})`);
     }
     const itemsData = await itemsResponse.json();
