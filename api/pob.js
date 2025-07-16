@@ -15,11 +15,8 @@ export default async function handler(req, res) {
 
         // **DEFINITIVE FIX**: Handle both pobb.in and pastebin.com links correctly.
         if (trimmedUrl.includes('pobb.in')) {
-            const urlParts = new URL(trimmedUrl);
-            const pathParts = urlParts.pathname.split('/');
-            const pobCode = pathParts[pathParts.length - 1];
-            if (!pobCode) throw new Error("Could not extract POB code from pobb.in URL.");
-            pobCodeUrl = `https://pobb.in/raw/${pobCode}`;
+            // pobb.in links are direct links to the raw data, no need to add /raw/
+            pobCodeUrl = trimmedUrl;
         } else if (trimmedUrl.includes('pastebin.com')) {
             const urlParts = new URL(trimmedUrl);
             const pathParts = urlParts.pathname.split('/');
@@ -32,7 +29,7 @@ export default async function handler(req, res) {
         
         const response = await fetch(pobCodeUrl);
         if (!response.ok) {
-            throw new Error(`Failed to fetch POB code (status: ${response.status})`);
+            throw new Error(`Failed to fetch POB code from ${pobCodeUrl} (status: ${response.status})`);
         }
         
         const rawCode = await response.text();
