@@ -6,18 +6,9 @@ async function fetchCharacterData(accountName, characterName) {
     const itemsApiUrl = `https://www.pathofexile.com/character-window/get-items?accountName=${encodeURIComponent(accountName)}&character=${encodeURIComponent(characterName)}`;
     const passivesApiUrl = `https://www.pathofexile.com/character-window/get-passive-skills?accountName=${encodeURIComponent(accountName)}&character=${encodeURIComponent(characterName)}`;
 
-    // This makes the request look like it's from a logged-in user, bypassing the 403 error.
-    const poeSessionId = process.env.POESESSID;
-    if (!poeSessionId) {
-        throw new Error("POESESSID environment variable not set on the server. This is required to contact the PoE API.");
-    }
-
-    // **DEFINITIVE FIX**: Add more standard browser headers to make the request look legitimate.
+    // Add a User-Agent header to mimic a real browser request.
     const headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Cookie': `POESESSID=${poeSessionId}`
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
     };
 
     // Fetch both endpoints at the same time
@@ -29,9 +20,6 @@ async function fetchCharacterData(accountName, characterName) {
     if (!itemsResponse.ok) {
         if (itemsResponse.status === 404) {
             throw new Error("Character not found. Check spelling or make sure your profile is public.");
-        }
-        if (itemsResponse.status === 403) {
-            throw new Error("PoE API request was forbidden. Your POESESSID may be invalid or expired. Please get a fresh one from the PoE website.");
         }
         throw new Error(`PoE API request for items failed (status: ${itemsResponse.status})`);
     }
