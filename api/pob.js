@@ -13,10 +13,13 @@ export default async function handler(req, res) {
         let pobCodeUrl;
         const trimmedUrl = url.trim();
 
-        // **DEFINITIVE FIX**: Handle both pobb.in and pastebin.com links correctly.
+        // **DEFINITIVE FIX**: Handle both pobb.in and pastebin.com links correctly by building the raw URL.
         if (trimmedUrl.includes('pobb.in')) {
-            // pobb.in links are direct links to the raw data, no need to add /raw/
-            pobCodeUrl = trimmedUrl;
+            const urlParts = new URL(trimmedUrl);
+            const pathParts = urlParts.pathname.split('/');
+            const pobCode = pathParts[pathParts.length - 1];
+            if (!pobCode) throw new Error("Could not extract POB code from pobb.in URL.");
+            pobCodeUrl = `https://pobb.in/raw/${pobCode}`;
         } else if (trimmedUrl.includes('pastebin.com')) {
             const urlParts = new URL(trimmedUrl);
             const pathParts = urlParts.pathname.split('/');
@@ -131,20 +134,4 @@ export default async function handler(req, res) {
 
         const buildData = {
             character: {
-                class: buildElement.getAttribute('className'),
-                ascendancy: buildElement.getAttribute('ascendancyName'),
-                level: buildElement.getAttribute('level'),
-                stats
-            },
-            skills,
-            items,
-            keystones: keystoneNames,
-        };
-        
-        res.status(200).json(buildData);
-
-    } catch (error) {
-        console.error("--- POB PARSER FAILED ---", error);
-        res.status(500).json({ error: error.message });
-    }
-}
+                class: buildElement.getAttribute('className
