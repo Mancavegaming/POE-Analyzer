@@ -16,6 +16,10 @@ const resultContainer = document.getElementById('result-container');
 const placeholder = document.getElementById('placeholder');
 const resultOutput = document.getElementById('result-output');
 
+const skillSelectionContainer = document.getElementById('skill-selection-container');
+const primarySkillSelect = document.getElementById('primary-skill-select');
+const secondarySkillSelect = document.getElementById('secondary-skill-select');
+
 // Store fetched build data globally
 let currentBuildData = null;
 
@@ -53,6 +57,7 @@ async function handleImport() {
         currentBuildData = await response.json();
         
         if (currentBuildData && currentBuildData.character) {
+            populateSkillSelectors(currentBuildData.items);
             analysisSection.classList.remove('hidden');
             importStatus.textContent = `Successfully imported '${currentBuildData.character.name}' (Level ${currentBuildData.character.level} ${currentBuildData.character.class}).`;
             importStatus.classList.remove('text-red-400');
@@ -73,10 +78,55 @@ async function handleImport() {
 }
 
 /**
+ * Populates the skill selection dropdowns from the character's items.
+ */
+function populateSkillSelectors(items) {
+    primarySkillSelect.innerHTML = '';
+    secondarySkillSelect.innerHTML = '';
+    secondarySkillSelect.add(new Option("None (Optional)", "None"));
+
+    const allGems = [];
+    items.forEach(item => {
+        if (item.gems) {
+            item.gems.forEach(gem => {
+                // We only care about active skills, not supports
+                if (!gem.name.includes('Support')) {
+                    allGems.push(gem);
+                }
+            });
+        }
+    });
+
+    if (allGems.length === 0) {
+        primarySkillSelect.innerHTML = '<option>No active skills found</option>';
+        secondarySkillSelect.innerHTML = '<option>None</option>';
+        return;
+    }
+
+    allGems.forEach(gem => {
+        const optionText = `${gem.name} (Lvl ${gem.level})`;
+        primarySkillSelect.add(new Option(optionText, gem.name));
+        secondarySkillSelect.add(new Option(optionText, gem.name));
+    });
+
+    // A simple guess for the main skill (often in body armour or a 6-link)
+    const mainItem = items.find(item => item.inventoryId === "BodyArmour") || items.find(item => item.sockets.length === 6);
+    if (mainItem && mainItem.gems) {
+        const mainSkill = mainItem.gems.find(gem => !gem.name.includes('Support'));
+        if (mainSkill) {
+            primarySkillSelect.value = mainSkill.name;
+        }
+    }
+}
+
+
+/**
  * Step 2: Handles sending the imported data and question to Gemini for analysis.
  */
 async function handleAnalysis() {
     const userQuestion = userQuestionInput.value.trim();
+    const primarySkill = primarySkillSelect.value;
+    const secondarySkill = secondarySkillSelect.value;
 
     if (!currentBuildData) {
         alert("Please import a character first.");
@@ -98,7 +148,9 @@ async function handleAnalysis() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 buildData: currentBuildData,
-                userQuestion: userQuestion
+                userQuestion: userQuestion,
+                primarySkill: primarySkill,
+                secondarySkill: secondarySkill
             }),
         });
 
