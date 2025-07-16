@@ -1,68 +1,113 @@
-// Version 2 - Forcing a fresh build to load environment variables.
-// This single serverless function handles both fetching data and calling Gemini.
-// It differentiates based on the request method (GET vs POST).
+import pako from 'pako';
+import { ZstdCodec } from 'zstd-codec';
 
-// Helper to fetch data from the official PoE API
-async function fetchCharacterData(accountName, characterName) {
-    const itemsApiUrl = `https://www.pathofexile.com/character-window/get-items?accountName=${encodeURIComponent(accountName)}&character=${encodeURIComponent(characterName)}`;
-    const passivesApiUrl = `https://www.pathofexile.com/character-window/get-passive-skills?accountName=${encodeURIComponent(accountName)}&character=${encodeURIComponent(characterName)}`;
-
-    // This makes the request look like it's from a logged-in user, bypassing the 403 error.
-    const poeSessionId = process.env.POESESSID;
+// Helper to parse the raw POB code.
+async function parsePobCode(pobCode) {
+    // POB uses URL-safe Base64, so replace '-' with '+' and '_' with '/'
+    const base64String = pobCode.trim().replace(/-/g, '+').replace(/_/g, '/');
     
-    // This check confirms if the Vercel environment has the required secret key.
-    if (!poeSessionId) {
-        throw new Error("CRITICAL CONFIGURATION ERROR: The POESESSID environment variable was not found on the Vercel server. Please double-check that it is set correctly in your Vercel Project Settings and trigger a new deployment.");
+    // Convert base64 to a byte array
+    const binaryString = atob(base64String);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
     }
 
-    const headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
-        'Cookie': `POESESSID=${poeSessionId}`
-    };
-
-    // Fetch both endpoints at the same time
-    const [itemsResponse, passivesResponse] = await Promise.all([
-        fetch(itemsApiUrl, { headers }),
-        fetch(passivesApiUrl, { headers })
-    ]);
-
-    if (!itemsResponse.ok) {
-        if (itemsResponse.status === 404) {
-            throw new Error("Character not found. Check spelling or make sure your profile is public.");
+    let inflatedData;
+    try {
+        // Try decompressing with Zlib first (older POBs)
+        inflatedData = pako.inflate(bytes, { to: 'string' });
+    } catch (e) {
+        // If Zlib fails, try decompressing with ZSTD (newer POBs)
+        if (String(e).includes("incorrect header check") || String(e).includes("invalid block type")) {
+            try {
+                const zstd = await ZstdCodec.load();
+                const streaming = new zstd.Streaming();
+                const decompressed = streaming.decompress(bytes);
+                inflatedData = new TextDecoder().decode(decompressed);
+            } catch (zstdError) {
+                throw new Error("Failed to decompress POB data with both Zlib and ZSTD.");
+            }
+        } else {
+             throw e; // Re-throw other unexpected errors
         }
-        if (itemsResponse.status === 403) {
-            throw new Error("PoE API request was forbidden. Your POESESSID may be invalid or expired.");
+    }
+
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(inflatedData, "application/xml");
+    if (xmlDoc.getElementsByTagName("parsererror").length) {
+        throw new Error("Failed to parse POB XML.");
+    }
+
+    const buildElement = xmlDoc.getElementsByTagName('Build')[0];
+    const itemsElement = xmlDoc.getElementsByTagName('Items')[0];
+    const skillsElement = xmlDoc.getElementsByTagName('Skills')[0];
+    const treeElement = xmlDoc.getElementsByTagName('Tree')[0];
+
+    if (!buildElement) {
+        throw new Error("POB data is incomplete or malformed.");
+    }
+
+    const stats = {};
+    for (const stat of buildElement.getElementsByTagName('Stat')) {
+        stats[stat.getAttribute('stat')] = stat.getAttribute('value');
+    }
+
+    const skills = [];
+    if (skillsElement) {
+        for (const group of skillsElement.getElementsByTagName('Skill')) {
+            const firstGem = group.getElementsByTagName('Gem')[0];
+            if (firstGem?.getAttribute('nameSpec')) {
+                skills.push({
+                    mainSkillId: firstGem.getAttribute('nameSpec'),
+                    slot: group.getAttribute('slot') || 'Unknown',
+                    level: firstGem.getAttribute('level'),
+                    quality: firstGem.getAttribute('quality'),
+                    isEnabled: group.getAttribute('enabled') === 'true',
+                    links: Array.from(group.getElementsByTagName('Gem')).slice(1).map(g => g.getAttribute('nameSpec'))
+                });
+            }
         }
-        throw new Error(`PoE API request for items failed (status: ${itemsResponse.status})`);
     }
-    const itemsData = await itemsResponse.json();
-
-    let passiveTreeData = { hashes: [], jewels: [] };
-    if (passivesResponse.ok) {
-        const passivesData = await passivesResponse.json();
-        passiveTreeData.hashes = passivesData.hashes || [];
-        passiveTreeData.jewels = (passivesData.items || []).map(jewel => ({
-            name: jewel.name, type: jewel.typeLine, explicitMods: jewel.explicitMods
-        }));
+    
+    const items = [];
+    if (itemsElement) {
+        for (const item of itemsElement.getElementsByTagName('Item')) {
+             const itemText = item.textContent || "";
+             const nameMatch = itemText.match(/Rarity: .*\n(.*?)\n/);
+             items.push({ 
+                name: nameMatch ? nameMatch[1] : 'Unknown Item',
+                data: itemText.trim() 
+            });
+        }
     }
 
-    const character = itemsData.character;
-    const items = itemsData.items.map(item => ({
-        name: item.name, type: item.typeLine, inventoryId: item.inventoryId,
-        sockets: item.sockets ? item.sockets.map(socket => ({ group: socket.group, color: socket.sColour })) : [],
-        gems: item.socketedItems ? item.socketedItems.map(gem => ({
-            name: gem.typeLine,
-            level: gem.properties?.find(p => p.name === "Level")?.values[0][0] || 'N/A',
-            quality: gem.properties?.find(p => p.name === "Quality")?.values[0][0] || '0'
-        })) : []
-    }));
+    const keystoneNames = [];
+    if (treeElement) {
+        const spec = treeElement.getElementsByTagName('Spec')[0];
+        if (spec) {
+             for (const node of spec.getElementsByTagName('Node')) {
+                if (node.getAttribute('isKeystone') === 'true') {
+                    keystoneNames.push(node.getAttribute('name'));
+                }
+            }
+        }
+    }
 
     return {
-        character: { name: character.name, class: character.class, level: character.level },
-        items: items,
-        passive_tree: passiveTreeData
+        character: {
+            class: buildElement.getAttribute('className'),
+            ascendancy: buildElement.getAttribute('ascendancyName'),
+            level: buildElement.getAttribute('level'),
+            stats
+        },
+        skills,
+        items,
+        keystones: keystoneNames,
     };
 }
+
 
 // Helper to call the Gemini API
 async function callGeminiApi(prompt) {
@@ -88,51 +133,36 @@ async function callGeminiApi(prompt) {
 
 // Main handler for the serverless function
 export default async function handler(req, res) {
-    // A GET request is for importing a build
-    if (req.method === 'GET') {
-        try {
-            const { accountName, characterName } = req.query;
-            const buildData = await fetchCharacterData(accountName, characterName);
-            return res.status(200).json(buildData);
-        } catch (error) {
-            console.error("Server-side GET error:", error);
-            return res.status(500).json({ error: error.message });
-        }
+    if (req.method !== 'POST') {
+        return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
-    // A POST request is for analyzing a build
-    if (req.method === 'POST') {
-        try {
-            const { buildData, userQuestion, primarySkill, secondarySkill } = req.body;
+    try {
+        const { pobCode, userQuestion } = req.body;
 
-            const prompt = `
-                You are a world-class expert on the video game Path of Exile (PoE). 
-                Your task is to analyze a player's build data and answer their question.
-                The data includes the character's class, level, items, gems, and passive tree.
+        const buildData = await parsePobCode(pobCode);
 
-                Here is the player's build data:
-                \`\`\`json
-                ${JSON.stringify(buildData, null, 2)}
-                \`\`\`
-                
-                The user has identified their Primary Damage Skill as: "${primarySkill}".
-                ${secondarySkill && secondarySkill !== 'None' ? `They are also interested in a Secondary Skill: "${secondarySkill}".` : ''}
+        const prompt = `
+            You are a world-class expert on the video game Path of Exile (PoE). 
+            Your task is to analyze a player's build data and answer their question.
+            The data includes the character's class, level, items, gems, and passive tree.
 
-                Here is the player's question:
-                "${userQuestion}"
+            Here is the player's build data:
+            \`\`\`json
+            ${JSON.stringify(buildData, null, 2)}
+            \`\`\`
+            
+            Here is the player's question:
+            "${userQuestion}"
 
-                Please provide a detailed analysis and answer. Look at the entire build: tree, gear, auras, flasks, etc. If the user asks about DPS, use your extensive knowledge of the game to provide a reasonable estimate based on the provided gems, links, gear, and passive tree.
-            `;
+            Please provide a detailed analysis and answer. Look at the entire build: tree, gear, auras, flasks, etc. If the user asks about DPS, use your extensive knowledge of the game to provide a reasonable estimate based on the provided gems, links, gear, and passive tree.
+        `;
 
-            const analysisText = await callGeminiApi(prompt);
-            return res.status(200).json({ text: analysisText });
+        const analysisText = await callGeminiApi(prompt);
+        return res.status(200).json({ text: analysisText });
 
-        } catch (error) {
-            console.error("Server-side POST error:", error);
-            return res.status(500).json({ error: error.message });
-        }
+    } catch (error) {
+        console.error("Server-side error:", error);
+        return res.status(500).json({ error: error.message });
     }
-
-    // Handle any other methods
-    return res.status(405).json({ error: 'Method Not Allowed' });
 }
