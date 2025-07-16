@@ -1,5 +1,6 @@
 import pako from 'pako';
 import { ZstdCodec } from 'zstd-codec';
+import { XMLParser } from 'fast-xml-parser';
 
 // Helper to parse the raw POB code.
 async function parsePobCode(pobCode) {
@@ -34,76 +35,80 @@ async function parsePobCode(pobCode) {
         }
     }
 
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(inflatedData, "application/xml");
-    if (xmlDoc.getElementsByTagName("parsererror").length) {
-        throw new Error("Failed to parse POB XML.");
-    }
+    // **DEFINITIVE FIX**: Use a server-side XML parser instead of the browser's DOMParser.
+    const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
+    const jsonObj = parser.parse(inflatedData);
 
-    const buildElement = xmlDoc.getElementsByTagName('Build')[0];
-    const itemsElement = xmlDoc.getElementsByTagName('Items')[0];
-    const skillsElement = xmlDoc.getElementsByTagName('Skills')[0];
-    const treeElement = xmlDoc.getElementsByTagName('Tree')[0];
-
-    if (!buildElement) {
+    if (!jsonObj.PathOfBuilding || !jsonObj.PathOfBuilding.Build) {
         throw new Error("POB data is incomplete or malformed.");
     }
 
+    const build = jsonObj.PathOfBuilding.Build;
+    const skills = jsonObj.PathOfBuilding.Skills.Skill;
+    const items = jsonObj.PathOfBuilding.Items.Item;
+    const tree = jsonObj.PathOfBuilding.Tree.Spec;
+
     const stats = {};
-    for (const stat of buildElement.getElementsByTagName('Stat')) {
-        stats[stat.getAttribute('stat')] = stat.getAttribute('value');
+    if (build.Stat) {
+        build.Stat.forEach(stat => {
+            stats[stat['@_stat']] = stat['@_value'];
+        });
     }
 
-    const skills = [];
-    if (skillsElement) {
-        for (const group of skillsElement.getElementsByTagName('Skill')) {
-            const firstGem = group.getElementsByTagName('Gem')[0];
-            if (firstGem?.getAttribute('nameSpec')) {
-                skills.push({
-                    mainSkillId: firstGem.getAttribute('nameSpec'),
-                    slot: group.getAttribute('slot') || 'Unknown',
-                    level: firstGem.getAttribute('level'),
-                    quality: firstGem.getAttribute('quality'),
-                    isEnabled: group.getAttribute('enabled') === 'true',
-                    links: Array.from(group.getElementsByTagName('Gem')).slice(1).map(g => g.getAttribute('nameSpec'))
-                });
+    const parsedSkills = [];
+    if (skills) {
+        // Ensure skills is always an array
+        const skillList = Array.isArray(skills) ? skills : [skills];
+        skillList.forEach(group => {
+            if (group.Gem) {
+                const gemList = Array.isArray(group.Gem) ? group.Gem : [group.Gem];
+                const firstGem = gemList[0];
+                if (firstGem?.['@_nameSpec']) {
+                    parsedSkills.push({
+                        mainSkillId: firstGem['@_nameSpec'],
+                        slot: group['@_slot'] || 'Unknown',
+                        level: firstGem['@_level'],
+                        quality: firstGem['@_quality'],
+                        isEnabled: group['@_enabled'] === 'true',
+                        links: gemList.slice(1).map(g => g['@_nameSpec'])
+                    });
+                }
             }
-        }
+        });
     }
     
-    const items = [];
-    if (itemsElement) {
-        for (const item of itemsElement.getElementsByTagName('Item')) {
-             const itemText = item.textContent || "";
-             const nameMatch = itemText.match(/Rarity: .*\n(.*?)\n/);
-             items.push({ 
+    const parsedItems = [];
+    if (items) {
+        const itemList = Array.isArray(items) ? items : [items];
+        itemList.forEach(item => {
+            const itemText = item['#text'] || "";
+            const nameMatch = itemText.match(/Rarity: .*\n(.*?)\n/);
+            parsedItems.push({ 
                 name: nameMatch ? nameMatch[1] : 'Unknown Item',
                 data: itemText.trim() 
             });
-        }
+        });
     }
 
     const keystoneNames = [];
-    if (treeElement) {
-        const spec = treeElement.getElementsByTagName('Spec')[0];
-        if (spec) {
-             for (const node of spec.getElementsByTagName('Node')) {
-                if (node.getAttribute('isKeystone') === 'true') {
-                    keystoneNames.push(node.getAttribute('name'));
-                }
+    if (tree && tree.Node) {
+        const nodeList = Array.isArray(tree.Node) ? tree.Node : [tree.Node];
+        nodeList.forEach(node => {
+            if (node['@_isKeystone'] === 'true') {
+                keystoneNames.push(node['@_name']);
             }
-        }
+        });
     }
 
     return {
         character: {
-            class: buildElement.getAttribute('className'),
-            ascendancy: buildElement.getAttribute('ascendancyName'),
-            level: buildElement.getAttribute('level'),
+            class: build['@_className'],
+            ascendancy: build['@_ascendancyName'],
+            level: build['@_level'],
             stats
         },
-        skills,
-        items,
+        skills: parsedSkills,
+        items: parsedItems,
         keystones: keystoneNames,
     };
 }
