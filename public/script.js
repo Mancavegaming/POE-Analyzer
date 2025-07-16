@@ -31,12 +31,17 @@ analyzeButton.addEventListener('click', handleAnalysis);
  * Step 1: Handles fetching character data from our serverless function.
  */
 async function handleImport() {
-    const accountName = accountNameInput.value.trim();
+    let accountName = accountNameInput.value.trim();
     const characterName = characterNameInput.value.trim();
 
     if (!accountName || !characterName) {
         alert("Please provide both an Account Name and a Character Name.");
         return;
+    }
+
+    // **FIX**: Automatically strip the tag from the account name if present.
+    if (accountName.includes('#')) {
+        accountName = accountName.split('#')[0];
     }
 
     setImportLoadingState(true);
