@@ -6,9 +6,16 @@ async function fetchCharacterData(accountName, characterName) {
     const itemsApiUrl = `https://www.pathofexile.com/character-window/get-items?accountName=${encodeURIComponent(accountName)}&character=${encodeURIComponent(characterName)}`;
     const passivesApiUrl = `https://www.pathofexile.com/character-window/get-passive-skills?accountName=${encodeURIComponent(accountName)}&character=${encodeURIComponent(characterName)}`;
 
-    // Add a User-Agent header to mimic a real browser request.
+    // **DEFINITIVE DEBUGGING STEP**: Hardcode the POESESSID directly.
+    const poeSessionId = "3215333795da049f25c7466bc6d587c0";
+
+    if (poeSessionId === "PASTE_YOUR_FRESH_POESESSID_HERE") {
+        throw new Error("Configuration Error: The POESESSID is not hardcoded in the api/analyze.js file. Please edit the file and paste your key.");
+    }
+
     const headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+        'Cookie': `POESESSID=${poeSessionId}`
     };
 
     // Fetch both endpoints at the same time
@@ -22,7 +29,7 @@ async function fetchCharacterData(accountName, characterName) {
             throw new Error("Character not found. Check spelling or make sure your profile is public.");
         }
         if (itemsResponse.status === 403) {
-             throw new Error("PoE API request was forbidden. Your character profile must be set to public in your PoE account's privacy settings.");
+            throw new Error("PoE API request was forbidden. Your POESESSID may be invalid or expired, or your profile is private.");
         }
         throw new Error(`PoE API request for items failed (status: ${itemsResponse.status})`);
     }
