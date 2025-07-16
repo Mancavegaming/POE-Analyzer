@@ -8,6 +8,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultContainer = document.getElementById('result-container');
     const placeholder = document.getElementById('placeholder');
     const resultOutput = document.getElementById('result-output');
+    const treeLinkContainer = document.getElementById('tree-link-container');
+    const treeLink = document.getElementById('tree-link');
 
     // --- Event Listeners ---
     analyzeButton.addEventListener('click', handleAnalysis);
@@ -27,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setLoadingState(true);
         resultOutput.innerHTML = '';
         placeholder.style.display = 'none';
+        treeLinkContainer.classList.add('hidden');
 
         try {
             const response = await fetch('/api/analyze', {
@@ -41,6 +44,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const analysisResult = await response.json();
+            
+            // Display the skill tree link if it exists
+            if (analysisResult.buildData && analysisResult.buildData.treeURL) {
+                treeLink.href = analysisResult.buildData.treeURL;
+                treeLinkContainer.classList.remove('hidden');
+            }
+            
             resultOutput.innerHTML = formatResponse(analysisResult.text);
 
         } catch (error) {
