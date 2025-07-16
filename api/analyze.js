@@ -35,7 +35,6 @@ async function parsePobCode(pobCode) {
         }
     }
 
-    // **DEFINITIVE FIX**: Use a server-side XML parser instead of the browser's DOMParser.
     const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
     const jsonObj = parser.parse(inflatedData);
 
@@ -57,7 +56,6 @@ async function parsePobCode(pobCode) {
 
     const parsedSkills = [];
     if (skills) {
-        // Ensure skills is always an array
         const skillList = Array.isArray(skills) ? skills : [skills];
         skillList.forEach(group => {
             if (group.Gem) {
@@ -91,13 +89,18 @@ async function parsePobCode(pobCode) {
     }
 
     const keystoneNames = [];
-    if (tree && tree.Node) {
-        const nodeList = Array.isArray(tree.Node) ? tree.Node : [tree.Node];
-        nodeList.forEach(node => {
-            if (node['@_isKeystone'] === 'true') {
-                keystoneNames.push(node['@_name']);
-            }
-        });
+    let treeURL = "";
+    if (tree) {
+        // Extract the skill tree URL
+        treeURL = tree['@_url'] || "";
+        if (tree.Node) {
+            const nodeList = Array.isArray(tree.Node) ? tree.Node : [tree.Node];
+            nodeList.forEach(node => {
+                if (node['@_isKeystone'] === 'true') {
+                    keystoneNames.push(node['@_name']);
+                }
+            });
+        }
     }
 
     return {
@@ -110,6 +113,7 @@ async function parsePobCode(pobCode) {
         skills: parsedSkills,
         items: parsedItems,
         keystones: keystoneNames,
+        treeURL: treeURL // Add the URL to the returned data
     };
 }
 
@@ -164,7 +168,8 @@ export default async function handler(req, res) {
         `;
 
         const analysisText = await callGeminiApi(prompt);
-        return res.status(200).json({ text: analysisText });
+        // Return both the analysis text and the build data (which includes the tree URL)
+        return res.status(200).json({ text: analysisText, buildData: buildData });
 
     } catch (error) {
         console.error("Server-side error:", error);
