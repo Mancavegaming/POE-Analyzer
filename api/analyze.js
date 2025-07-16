@@ -9,6 +9,11 @@ async function fetchCharacterData(accountName, characterName) {
     // **DEFINITIVE FIX**: Add a User-Agent AND the POESESSID to the request headers.
     // This makes the request look like it's from a logged-in user, bypassing the 403 error.
     const poeSessionId = process.env.POESESSID;
+
+    // --- DEBUGGING STEP ---
+    // This will print all environment variables the server can see.
+    console.log("Available Environment Variables:", process.env);
+    
     if (!poeSessionId) {
         throw new Error("POESESSID environment variable not set on the server. This is required to contact the PoE API.");
     }
