@@ -6,16 +6,12 @@ async function fetchCharacterData(accountName, characterName) {
     const itemsApiUrl = `https://www.pathofexile.com/character-window/get-items?accountName=${encodeURIComponent(accountName)}&character=${encodeURIComponent(characterName)}`;
     const passivesApiUrl = `https://www.pathofexile.com/character-window/get-passive-skills?accountName=${encodeURIComponent(accountName)}&character=${encodeURIComponent(characterName)}`;
 
-    // **DEFINITIVE FIX**: Add a User-Agent AND the POESESSID to the request headers.
     // This makes the request look like it's from a logged-in user, bypassing the 403 error.
     const poeSessionId = process.env.POESESSID;
-
-    // --- DEBUGGING STEP ---
-    // This will print all environment variables the server can see.
-    console.log("Available Environment Variables:", process.env);
     
+    // This check confirms if the Vercel environment has the required secret key.
     if (!poeSessionId) {
-        throw new Error("POESESSID environment variable not set on the server. This is required to contact the PoE API.");
+        throw new Error("Configuration Error: Your POESESSID is not set on the Vercel server. Please go to your Project Settings -> Environment Variables in Vercel, add your POESESSID, and then redeploy.");
     }
 
     const headers = {
@@ -33,7 +29,6 @@ async function fetchCharacterData(accountName, characterName) {
         if (itemsResponse.status === 404) {
             throw new Error("Character not found. Check spelling or make sure your profile is public.");
         }
-        // A 403 error here now likely means the POESESSID is invalid or expired.
         if (itemsResponse.status === 403) {
             throw new Error("PoE API request was forbidden. Your POESESSID may be invalid or expired.");
         }
