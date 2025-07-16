@@ -1,4 +1,8 @@
-// This serverless function fetches POB data using the reliable pob.party API.
+import pako from 'pako';
+import { ZstdCodec } from 'zstd-codec';
+
+// This is the definitive, self-contained POB parser.
+// It runs on the server and handles both old (zlib) and new (zstd) formats.
 export default async function handler(req, res) {
     try {
         const { url } = req.query;
@@ -6,72 +10,130 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: "Invalid or empty URL provided." });
         }
 
-        // Extract the code from the URL (e.g., 'FNSGYXu2QUgG')
-        const urlParts = url.trim().split('/');
-        const pobCode = urlParts[urlParts.length - 1];
+        let pobCodeUrl;
+        const trimmedUrl = url.trim();
 
-        if (!pobCode) {
-            throw new Error("Could not extract POB code from URL.");
+        // **DEFINITIVE FIX**: Handle both pobb.in and pastebin.com links correctly.
+        if (trimmedUrl.includes('pobb.in')) {
+            // pobb.in links are direct links to the raw data, no need to add /raw/
+            pobCodeUrl = trimmedUrl;
+        } else if (trimmedUrl.includes('pastebin.com')) {
+            const urlParts = new URL(trimmedUrl);
+            const pathParts = urlParts.pathname.split('/');
+            const pobCode = pathParts[pathParts.length - 1];
+            if (!pobCode) throw new Error("Could not extract POB code from pastebin.com URL.");
+            pobCodeUrl = `https://pastebin.com/raw/${pobCode}`;
+        } else {
+            throw new Error("Unsupported URL. Please use a pobb.in or pastebin.com link.");
         }
-
-        // Call the pob.party API directly from the server. No CORS proxy needed.
-        const apiUrl = `https://pob.party/api/v2/pastebin/${pobCode}`;
         
-        const response = await fetch(apiUrl);
+        const response = await fetch(pobCodeUrl);
         if (!response.ok) {
-            throw new Error(`The pob.party API could not find the build. Please check your link. (status: ${response.status})`);
+            throw new Error(`Failed to fetch POB code from ${pobCodeUrl} (status: ${response.status})`);
+        }
+        
+        const rawCode = await response.text();
+        if (!rawCode) {
+            throw new Error("Could not retrieve POB code from URL.");
         }
 
-        const buildJson = await response.json();
+        // POB uses URL-safe Base64, so replace '-' with '+' and '_' with '/'
+        const base64String = rawCode.trim().replace(/-/g, '+').replace(/_/g, '/');
         
-        if (!buildJson || !buildJson.build) {
-            throw new Error("Invalid response from pob.party API.");
+        // Convert base64 to a byte array
+        const binaryString = atob(base64String);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
         }
 
-        const build = buildJson.build;
-        
-        // Reformat the pob.party JSON into the structure our app expects
+        let inflatedData;
+        try {
+            // Try decompressing with Zlib first (older POBs)
+            inflatedData = pako.inflate(bytes, { to: 'string' });
+        } catch (e) {
+            // If Zlib fails, try decompressing with ZSTD (newer POBs)
+            if (String(e).includes("incorrect header check") || String(e).includes("invalid block type")) {
+                try {
+                    const zstd = await ZstdCodec.load();
+                    const streaming = new zstd.Streaming();
+                    const decompressed = streaming.decompress(bytes);
+                    inflatedData = new TextDecoder().decode(decompressed);
+                } catch (zstdError) {
+                    throw new Error("Failed to decompress POB data with both Zlib and ZSTD.");
+                }
+            } else {
+                 throw e; // Re-throw other unexpected errors
+            }
+        }
+
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(inflatedData, "application/xml");
+        if (xmlDoc.getElementsByTagName("parsererror").length) {
+            throw new Error("Failed to parse POB XML.");
+        }
+
+        const buildElement = xmlDoc.getElementsByTagName('Build')[0];
+        const itemsElement = xmlDoc.getElementsByTagName('Items')[0];
+        const skillsElement = xmlDoc.getElementsByTagName('Skills')[0];
+        const treeElement = xmlDoc.getElementsByTagName('Tree')[0];
+
+        if (!buildElement) {
+            throw new Error("POB data is incomplete or malformed.");
+        }
+
         const stats = {};
-        if (build.stats) {
-            build.stats.forEach(stat => {
-                stats[stat.id] = stat.value;
-            });
+        for (const stat of buildElement.getElementsByTagName('Stat')) {
+            stats[stat.getAttribute('stat')] = stat.getAttribute('value');
         }
-        
+
         const skills = [];
-        if (build.skills) {
-            build.skills.forEach(group => {
-                if (group.gems && group.gems.length > 0) {
-                    const firstGem = group.gems[0];
-                     skills.push({
-                        mainSkillId: firstGem.id,
-                        slot: group.slot || 'Unknown',
-                        level: firstGem.level,
-                        quality: firstGem.quality,
-                        isEnabled: group.enabled,
-                        links: group.gems.slice(1).map(g => g.id)
+        if (skillsElement) {
+            for (const group of skillsElement.getElementsByTagName('Skill')) {
+                const firstGem = group.getElementsByTagName('Gem')[0];
+                if (firstGem?.getAttribute('nameSpec')) {
+                    skills.push({
+                        mainSkillId: firstGem.getAttribute('nameSpec'),
+                        slot: group.getAttribute('slot') || 'Unknown',
+                        level: firstGem.getAttribute('level'),
+                        quality: firstGem.getAttribute('quality'),
+                        isEnabled: group.getAttribute('enabled') === 'true',
+                        links: Array.from(group.getElementsByTagName('Gem')).slice(1).map(g => g.getAttribute('nameSpec'))
                     });
                 }
-            });
+            }
         }
         
         const items = [];
-        if (build.items) {
-            build.items.forEach(item => {
-                 items.push({
-                    name: item.name,
-                    data: item.raw
+        if (itemsElement) {
+            for (const item of itemsElement.getElementsByTagName('Item')) {
+                 const itemText = item.textContent || "";
+                 const nameMatch = itemText.match(/Rarity: .*\n(.*?)\n/);
+                 items.push({ 
+                    name: nameMatch ? nameMatch[1] : 'Unknown Item',
+                    data: itemText.trim() 
                 });
-            });
+            }
         }
-        
-        const keystoneNames = build.keystones ? build.keystones.map(k => k.name) : [];
+
+        const keystoneNames = [];
+        if (treeElement) {
+            const spec = treeElement.getElementsByTagName('Spec')[0];
+            if (spec) {
+                 for (const node of spec.getElementsByTagName('Node')) {
+                    if (node.getAttribute('isKeystone') === 'true') {
+                        keystoneNames.push(node.getAttribute('name'));
+                    }
+                }
+            }
+        }
 
         const buildData = {
             character: {
-                class: build.class,
-                ascendancy: build.ascendancy,
-                level: build.level,
+                class: buildElement.getAttribute('className'),
+                ascendancy: buildElement.getAttribute('ascendancyName'),
+                level: buildElement.getAttribute('level'),
                 stats
             },
             skills,
