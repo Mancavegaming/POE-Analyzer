@@ -8,62 +8,76 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex items-center justify-center p-4">
 
     <div class="w-full max-w-3xl mx-auto bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-8">
         
-        <!-- Header -->
         <div class="text-center mb-8">
             <h1 class="text-3xl md:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">PoE Build Analyzer</h1>
-            <p class="text-gray-400 mt-2">Analyze a character directly from the official PoE API.</p>
+            <p class="text-gray-400 mt-2">Import a build, then ask Gemini AI anything about it.</p>
         </div>
 
-        <!-- Input Form -->
-        <div class="space-y-6">
-            <!-- New Inputs for Account and Character Name -->
+        <!-- Step 1: Import Build -->
+        <div class="space-y-4 p-4 border border-gray-700 rounded-lg">
+            <h2 class="text-xl font-semibold text-white">Step 1: Import Character</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label for="account-name" class="block text-sm font-medium text-gray-300 mb-2">Account Name</label>
-                    <input type="text" id="account-name" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition" placeholder="e.g., Zizaran">
+                    <input type="text" id="account-name" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition" placeholder="e.g., Zizaran (Case-Sensitive)">
                 </div>
                 <div>
                     <label for="character-name" class="block text-sm font-medium text-gray-300 mb-2">Character Name</label>
-                    <input type="text" id="character-name" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition" placeholder="e.g., ZizPCOC">
+                    <input type="text" id="character-name" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition" placeholder="e.g., ZizPCOC (Case-Sensitive)">
                 </div>
             </div>
-
-            <div>
-                <label for="user-question" class="block text-sm font-medium text-gray-300 mb-2">Your Question</label>
-                <textarea id="user-question" rows="4" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition" placeholder="e.g., How can I improve this build's defenses? What are some good unique items for this character?"></textarea>
-            </div>
-
-            <div>
-                <button id="analyze-button" class="w-full bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-600 hover:to-orange-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-all duration-300 ease-in-out transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed">
-                    <span id="button-text">Analyze Build</span>
-                    <span id="button-spinner" class="hidden">
-                        <svg class="animate-spin -ml-1 mr-3 h-5 w-5 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Analyzing...
-                    </span>
-                </button>
-            </div>
+            <button id="import-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-all duration-300 ease-in-out">
+                <span id="import-button-text">Import Build</span>
+                <span id="import-button-spinner" class="hidden">Importing...</span>
+            </button>
+            <div id="import-status" class="text-center text-gray-400 h-5 mt-2"></div>
         </div>
 
-        <!-- Result Display -->
-        <div id="result-container" class="mt-8 pt-6 border-t border-gray-700">
-             <div id="placeholder" class="text-center text-gray-500">
-                <p>Your build analysis will appear here.</p>
-            </div>
-            <div id="result-output" class="prose-styles max-w-none"></div>
-        </div>
+        <!-- Step 2: Analyze Build (Initially hidden) -->
+        <div id="analysis-section" class="hidden mt-6 space-y-6">
+            <div class="p-4 border border-gray-700 rounded-lg">
+                 <h2 class="text-xl font-semibold text-white mb-4">Step 2: Analyze Build</h2>
+                
+                <!-- Skill Selection Dropdowns -->
+                <div id="skill-selection-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="primary-skill-select" class="block text-sm font-medium text-gray-300 mb-2">Primary Damage Skill</label>
+                        <select id="primary-skill-select" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition"></select>
+                    </div>
+                    <div>
+                        <label for="secondary-skill-select" class="block text-sm font-medium text-gray-300 mb-2">Secondary Skill (Optional)</label>
+                        <select id="secondary-skill-select" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition"></select>
+                    </div>
+                </div>
 
+                <div class="mt-4">
+                    <label for="user-question" class="block text-sm font-medium text-gray-300 mb-2">Your Question</label>
+                    <textarea id="user-question" rows="4" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none transition" placeholder="e.g., What is the DPS of my primary skill? How can I improve my defenses?"></textarea>
+                </div>
+
+                <div class="mt-4">
+                    <button id="analyze-button" class="w-full bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-600 hover:to-orange-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-all duration-300 ease-in-out">
+                        <span id="button-text">Analyze Build</span>
+                         <span id="button-spinner" class="hidden">Analyzing...</span>
+                    </button>
+                </div>
+            </div>
+            <!-- Result Display -->
+            <div id="result-container" class="mt-2 pt-6 border-t border-gray-700">
+                 <div id="placeholder" class="text-center text-gray-500">
+                    <p>Your build analysis will appear here.</p>
+                </div>
+                <div id="result-output" class="prose-styles max-w-none"></div>
+            </div>
+        </div>
     </div>
     
-    <!-- We link to our new client-side script file -->
-    <script src="/script.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
