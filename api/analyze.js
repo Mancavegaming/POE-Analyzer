@@ -97,14 +97,14 @@ export default async function handler(req, res) {
                 \`\`\`json
                 ${JSON.stringify(buildData, null, 2)}
                 \`\`\`
-
+                
                 The user has identified their Primary Damage Skill as: "${primarySkill}".
                 ${secondarySkill && secondarySkill !== 'None' ? `They are also interested in a Secondary Skill: "${secondarySkill}".` : ''}
 
                 Here is the player's question:
                 "${userQuestion}"
 
-                Please provide a detailed analysis and answer.
+                Please provide a detailed analysis and answer. Look at the entire build: tree, gear, auras, flasks, etc. If the user asks about DPS, use your extensive knowledge of the game to provide a reasonable estimate based on the provided gems, links, gear, and passive tree.
             `;
 
             const analysisText = await callGeminiApi(prompt);
